@@ -1,0 +1,20 @@
+## Build
+bin/
+obj/
+
+## VS files
+.vs/
+*.user
+*.suo
+
+## Debug/Release
+Debug/
+Release/
+
+## Rider / VS Code 
+.idea/
+.vscode/
+
+## OS files
+.DS_Store
+Thumbs.db
