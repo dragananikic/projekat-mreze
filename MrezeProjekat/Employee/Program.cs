@@ -10,7 +10,8 @@ class Program
     {
         Console.OutputEncoding = Encoding.UTF8;
 
-        string username = LoadOrAskUsername("employee_user.txt", "Unesi username zaposlenog: ");
+        string file = $"employee_user_{Environment.ProcessId}.txt";
+        string username = LoadOrAskUsername(file, "Unesi username zaposlenog: ");
 
         int tcpPort = UdpLoginAsEmployee(username);
 
@@ -65,7 +66,7 @@ class Program
                 string komentar = Console.ReadLine() ?? "";
 
                 if (string.IsNullOrWhiteSpace(komentar))
-                    LineProto.SendLine(tcp, $"DONE_TASK|{username}|{naziv}");
+                    LineProto.SendLine(tcp, $"{naziv}:Završen");
                 else
                     LineProto.SendLine(tcp, $"DONE_TASK|{username}|{naziv}|{komentar}");
 

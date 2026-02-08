@@ -11,6 +11,7 @@ class Program
     
     static readonly List<Socket> _tcpClients = new();
     static readonly Dictionary<Socket, StringBuilder> _tcpBuffers = new();
+  
 
     static void Main()
     {
@@ -87,7 +88,9 @@ class Program
             {
                 string menadzer = msg.Substring("GET_UTOKU:".Length).Trim();
                 var list = GetMenadzerTasks(menadzer)
-                    .Where(t => t.Status == StatusZadatka.UToku)
+                    .Where(t =>
+                     t.Status == StatusZadatka.UToku ||
+                    (t.Status == StatusZadatka.Zavrsen && !string.IsNullOrWhiteSpace(t.Komentar)))
                     .ToList();
                 string json = JsonSerializer.Serialize(list);
                 SendUdp(udp, remote, json);
@@ -110,10 +113,11 @@ class Program
                 {
                     string menadzer = parts[1];
                     string naziv = parts[2];
+
                     if (int.TryParse(parts[3], out int novi))
                     {
-                        bool ok = SetPrioritet(menadzer, naziv, novi);
-                        SendUdp(udp, remote, ok ? "OK" : "NOT_FOUND");
+                        bool ok = SetPrioritetIfEligible(menadzer, naziv, novi);
+                        SendUdp(udp, remote, ok ? "OK" : "NOT_ELIGIBLE");
                         return;
                     }
                 }
@@ -209,6 +213,25 @@ class Program
 
     static void ProcessTcpLine(Socket client, string line)
     {
+      
+        if (line.Contains(':') && !line.Contains('|'))
+        {
+            var p = line.Split(':', 2);
+            if (p.Length == 2 && p[1].Trim().Equals("Završen", StringComparison.OrdinalIgnoreCase))
+            {
+                string naziv = p[0].Trim();
+
+                var task = _zadaciPoMenadzeru.Values
+                    .SelectMany(x => x)
+                    .FirstOrDefault(t => t.Naziv.Equals(naziv, StringComparison.OrdinalIgnoreCase));
+
+                if (task == null) { LineProto.SendLine(client, "NOT_FOUND"); return; }
+
+                task.Status = StatusZadatka.Zavrsen;
+                LineProto.SendLine(client, "OK");
+                return;
+            }
+        }
         var parts = line.Split('|');
         if (parts.Length == 0) return;
 
@@ -328,5 +351,23 @@ class Program
             }
         }
         return false;
+    }
+
+    static bool SetPrioritetIfEligible(string menadzer, string naziv, int novi)
+    {
+        if (!_zadaciPoMenadzeru.TryGetValue(menadzer, out var list))
+            return false;
+
+        var task = list.FirstOrDefault(t => t.Naziv.Equals(naziv, StringComparison.OrdinalIgnoreCase));
+        if (task == null) return false;
+
+       
+        if (task.Status == StatusZadatka.UToku) return false;
+
+        int days = (task.Rok.Date - DateTime.Now.Date).Days;
+        if (days != 1 && days != 2) return false;
+
+        task.Prioritet = novi;
+        return true;
     }
 }

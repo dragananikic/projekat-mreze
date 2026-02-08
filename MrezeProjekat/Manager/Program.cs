@@ -10,7 +10,8 @@ class Program
     {
         Console.OutputEncoding = Encoding.UTF8;
 
-        string username = LoadOrAskUsername("manager_user.txt", "Unesi username menadžera: ");
+        string file = $"manager_user_{Environment.ProcessId}.txt";
+        string username = LoadOrAskUsername(file, "Unesi username menadžera: ");
 
         int tcpPort = UdpLoginAsManager(username);
 
@@ -39,8 +40,8 @@ class Program
             }
             else if (op == "2")
             {
-                var svi = UdpGetSvi(username);
-                PrintMenadzerOverview(svi);
+                var utoku = UdpGetUToku(username);
+                PrintUTokuWithHighlightsAndComments(utoku);
             }
             else if (op == "3")
             {
@@ -107,19 +108,6 @@ class Program
         return list ?? new List<ZadatakProjekta>();
     }
 
-    static string UdpSetPrioritet(string menadzer, string naziv, int novi)
-    {
-        using Socket udp = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-        EndPoint server = new IPEndPoint(IPAddress.Loopback, NetConsts.UdpPort);
-
-        string msg = $"PRIORITET:{menadzer}:{naziv}:{novi}";
-        udp.SendTo(Encoding.UTF8.GetBytes(msg), server);
-
-        byte[] buf = new byte[2048];
-        EndPoint remote = new IPEndPoint(IPAddress.Any, 0);
-        int bytes = udp.ReceiveFrom(buf, ref remote);
-        return Encoding.UTF8.GetString(buf, 0, bytes);
-    }
 
     static ZadatakProjekta ReadTaskFromConsole(string menadzer)
     {
@@ -142,14 +130,12 @@ class Program
         return t;
     }
 
-    static void PrintUTokuWithHighlightsAndComments(List<ZadatakProjekta> utoku)
+    static void PrintUTokuWithHighlightsAndComments(List<ZadatakProjekta> list)
     {
-        Console.WriteLine("\n--- ZADACI U TOKU ---");
-
-        
         var now = DateTime.Now.Date;
 
-        foreach (var t in utoku)
+        Console.WriteLine("\n--- ZADACI U TOKU ---");
+        foreach (var t in list.Where(x => x.Status == StatusZadatka.UToku))
         {
             int days = (t.Rok.Date - now).Days;
             bool highlight = (days == 1 || days == 2);
@@ -160,8 +146,12 @@ class Program
                 Console.WriteLine($"- {t.Naziv}, zaposleni={t.Zaposleni}, prioritet={t.Prioritet}, rok={t.Rok:yyyy-MM-dd}");
         }
 
-        
-        Console.WriteLine("\nNapomena: komentar završenih ćeš videti kada proširimo GET_UTOKU da vraća i 'završene sa komentarom'.");
+        Console.WriteLine("\n--- ZAVRŠENI SA KOMENTAROM ---");
+        foreach (var t in list.Where(x => x.Status == StatusZadatka.Zavrsen &&
+                                         !string.IsNullOrWhiteSpace(x.Komentar)))
+        {
+            Console.WriteLine($"- {t.Naziv}, zaposleni={t.Zaposleni}, komentar=\"{t.Komentar}\"");
+        }
     }
 
     static string ReceiveOneLine(Socket s)
@@ -179,44 +169,6 @@ class Program
         }
     }
 
-    static List<ZadatakProjekta> UdpGetSvi(string menadzer)
-    {
-        using Socket udp = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-        EndPoint server = new IPEndPoint(IPAddress.Loopback, NetConsts.UdpPort);
-
-        udp.SendTo(Encoding.UTF8.GetBytes("GET_SVI:" + menadzer), server);
-
-        byte[] buf = new byte[8192];
-        EndPoint remote = new IPEndPoint(IPAddress.Any, 0);
-        int bytes = udp.ReceiveFrom(buf, ref remote);
-        string json = Encoding.UTF8.GetString(buf, 0, bytes);
-
-        return JsonSerializer.Deserialize<List<ZadatakProjekta>>(json) ?? new List<ZadatakProjekta>();
-    }
-
-    static void PrintMenadzerOverview(List<ZadatakProjekta> svi)
-    {
-        Console.WriteLine("\n--- PREGLED MOJIH ZADATAKA ---");
-        var now = DateTime.Now.Date;
-
-        Console.WriteLine("\nU TOKU:");
-        foreach (var t in svi.Where(x => x.Status == StatusZadatka.UToku))
-        {
-            int days = (t.Rok.Date - now).Days;
-            if (days == 1 || days == 2)
-                Console.WriteLine($"!!! HITNO ({days} dana) -> {t.Naziv} | zaposleni={t.Zaposleni} | prioritet={t.Prioritet} | rok={t.Rok:yyyy-MM-dd}");
-            else
-                Console.WriteLine($"- {t.Naziv} | zaposleni={t.Zaposleni} | prioritet={t.Prioritet} | rok={t.Rok:yyyy-MM-dd}");
-        }
-
-        Console.WriteLine("\nNA CEKANJU (pred rok):");
-        foreach (var t in svi.Where(x => x.Status == StatusZadatka.NaCekanju))
-        {
-            int days = (t.Rok.Date - now).Days;
-            if (days == 1 || days == 2)
-                Console.WriteLine($"!!! MOZE DA SE POVEĆA PRIORITET ({days} dana) -> {t.Naziv} | zaposleni={t.Zaposleni} | prioritet={t.Prioritet} | rok={t.Rok:yyyy-MM-dd}");
-        }
-    }
 
     static string UdpSetPrioritetZadatakFormat(string naziv, int novi)
     {
